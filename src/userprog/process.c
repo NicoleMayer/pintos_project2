@@ -38,8 +38,10 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  char *real_name, *save_ptr;
+  real_name = strtok_r (fn_copy, " ", &save_ptr);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (real_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -53,12 +55,13 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-
+  
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
   success = load (file_name, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
@@ -217,10 +220,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
+  
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
+  printf("-------------load??\n");
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -311,6 +315,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   success = true;
 
  done:
+ printf("-------------load??2\n");
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   return success;
