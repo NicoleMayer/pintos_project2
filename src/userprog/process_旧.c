@@ -20,7 +20,6 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static void push_argument(char **parse, int cnt, void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -29,7 +28,7 @@ static void push_argument(char **parse, int cnt, void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy, *real_name, *save_ptr;
+  char *fn_copy;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -39,13 +38,12 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  real_name = strtok_r (file_name, " ", &save_ptr);
-  // printf("file name is %s \n", real_name);
+  char *real_name, *save_ptr;
+  real_name = strtok_r (fn_copy, " ", &save_ptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (real_name, PRI_DEFAULT, start_process, fn_copy);
-
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy);
+    palloc_free_page (fn_copy); 
   return tid;
 }
 
@@ -55,33 +53,21 @@ static void
 start_process (void *file_name_)
 {
   char *file_name = file_name_;
-  char *tmp[50], *token, *save_ptr;
-  int cnt = 0;
   struct intr_frame if_;
   bool success;
-
-  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
-    token = strtok_r(NULL, " ", &save_ptr))
-  {
-    tmp[cnt++] = token;
-  }
   
-
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
-  push_argument(&tmp, cnt, &if_.esp); //TODO
-  // hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //TODO DEBUG
 
+  success = load (file_name, &if_.eip, &if_.esp);
+
+  /* If load failed, quit. */
+  palloc_free_page (file_name);
   if (!success) 
-  {
-    /* If load failed, quit. */
-    palloc_free_page (file_name);
-  }
-    // thread_exit ();
+    thread_exit ();
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -91,47 +77,6 @@ start_process (void *file_name_)
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
-}
-
-static void 
-push_argument(char **parse, int argc, void **esp)
-{
-  int i;
-  int len = 0;
-  int argv_addr[argc];
-  for (i = 0; i < argc; i++)
-  {
-    len = strlen (parse[i]) + 1;
-    *esp -= len;
-    memcpy (*esp, parse[i], len);
-    argv_addr[i] = (int) *esp;
-  }
-
-  // word align
-  *esp = (int)*esp & 0xfffffffc;
-
-  // null
-  *esp -= 4;
-  *(int *) *esp = 0;
-
-  // argvs
-  for (i = argc - 1; i >= 0; i--)
-  {
-    *esp -= 4;
-    *(int *) *esp = argv_addr[i];
-  }
-
-  // **argv
-  *esp -= 4;
-  *(int *) *esp = (int) *esp + 4;
-
-  // argc
-  *esp -= 4;
-  *(int *) *esp = argc;
-
-  // ret
-  *esp -= 4;
-  *(int *) *esp = 0;
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -281,10 +226,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
+  
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
