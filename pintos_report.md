@@ -45,7 +45,7 @@ We create function `push_argument` to do split the argument by `argv` in the `st
 
 When parsing the command line, we use `strtok_r` given by pintos rather than `strtok`. The difference between `strtok` and `strtok_r` is that the latter is threadsafe. The `save_ptr` in `strtok_r` is provided by the caller but  `strtok`  relies on a pointer to remember where it was looking for. Thread may be interrupted at any time, so it's important to be threadsafe.
 
-We use the filesys_lock to do file operation by adding method in thread.c and thread.h.
+We use the `filesys_lock` to do file operation by adding method in `thread.c` and `thread.h`.
 ```C
 /*Do file lock operation*/
 void acquire_lock_f(){
@@ -73,7 +73,6 @@ In this task, we split the command name and other arguments and pass them to the
   - We create a new struct called `child`
 
   ```C
-  struct child
   struct child{
     tid_t tid;     //tid of the thread
     bool isrun;    //whether the child's thread is run successfully 
@@ -82,10 +81,10 @@ In this task, we split the command name and other arguments and pass them to the
     int store_exit;//the exit status of child thread
     };
   ```
-
-  - We add some new attributes to the struct `thread`
-
-  ```C
+  
+- We add some new attributes to the struct `thread`
+  
+```C
     struct list childs; //The list of childs
     struct child * thread_child; //Store the child of this thread
     int st_exit; //Exit status
@@ -139,7 +138,7 @@ Implemented by function `sys_halt (void)`, just call function `shutdown_power_of
 
 **exec**
 
-Implemented by function `sys_exec (const char *cmdline)`, first to check if the file referred by `file_name` is valid(whether the pointer to memeory address, page and content of page are valid). If it is invalid, return -1, else we call function `process_execute (const char *file_name)`.
+Implemented by function `sys_exec (const char *cmdline)`, first to check if the file referred by `file_name` is valid (whether the pointer to memeory address, page and content of page are valid). If it is invalid, return -1, else we call function `process_execute (const char *file_name)`.
 
 **wait** 
 
@@ -152,14 +151,13 @@ The practice syscall just adds 1 to its first argument `argv[0]`, and returns th
 
 ### 2.3 Synchronization
 In the process of execution of process, execute will return -1 if the process fails, it can't return. To solve this, we add `success` to struct `thread` to record whether the thread exectue successfully. What' more, we use struct thread `parent` to get its parent and set its status according to the result of loading. It's a good design to record child's executing result in parent instead of child. Last but not least, we use semaphore to realize "parent" waits for "child". When a child process is created, it will down `sema` to block the parent. When the child finish, it will up `sema` to wake up his parent.  
-  
-In the process of wating of process(we realize the waiting process by semaphore), when a "parent" need to wait his "child", `sema_down` is called to block the parent.
-And when the "child" finishes, the "parent" will wake up.
+
+In the process of wating of process(we realize the waiting process by semaphore), when a "parent" need to wait his "child", `sema_down` is called to block the parent. And when the "child" finishes, the "parent" will wake up.
 
 
 ### 2.4 Rationale
 
-In this task, we finish three kernel system calls and one for practice. To achieve the goal, we create a new structure named `child` and add some atrributes to the struct `thread`. Semaphores are used in this task to prevent race condition. What's more, we store a thread's parent for it and such kind of design make us more eficient to find parent thread(we will change the status of parent more quickly).
+In this task, we finish three kernel system calls and one for practice. To achieve the goal, we create a new structure named `child` and add some atrributes to the struct `thread`. Semaphores are used in this task to prevent race condition. What's more, we store a thread's parent for it and such kind of design make us more eficient to find parent thread (we will change the status of parent more quickly).
 
 ## Task 3 File Operation Syscalls
 
@@ -222,10 +220,10 @@ struct thread_file{
   * add file lock functions
   ```C
   void acquire_lock_f(){
-  lock_acquire(&lock_f);
+  	lock_acquire(&lock_f);
   }
   void release_lock_f(){
-  lock_release(&lock_f);
+  	lock_release(&lock_f);
   }
   ```
   * modify some initialization function in the thread.c
@@ -288,19 +286,18 @@ Yes. The codes we implement are consistent with the algorithm part discussed bef
 
 Yes. We explain every parameter and the important line in these complex sections.
 
-
 **Q6: Did you leave commented-out code in your final submission?** 
 
 No. We remove them in the final version.
 
 **Q7: Did you copy-paste code instead of creating reusable functions?** 
 
-No. If some codes will repeat, we encapsulate the codes into a function and just invoke the function when needed. We will check the invalid memory for each system call, but different system calls need to check different things. So we use function `check_ptr2` for all system calls(`check_ptr2` is a new version to solve special situation).  
+No. If some codes will repeat, we encapsulate the codes into a function and just invoke the function when needed. We will check the invalid memory for each system call, but different system calls need to check different things. So we use function `check_ptr2` for all system calls (`check_ptr2` is a new version to solve special situation).  
 
 **Q8: Are your lines of source code excessively long? (more than 100 characters)**   
 No.
 
 **Q9: Did you re-implement linked list algorithms instead of using the provided list manipu-**
-**lation**  
+**lation?** 
 No.
 
