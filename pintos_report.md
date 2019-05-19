@@ -73,34 +73,35 @@ In this task, we split the command name and other arguments and pass them to the
   - We create a new struct called `child`
 
   ```C
-  struct child{
-    tid_t tid;     /*tid of the thread*/
-    bool isrun;    /*whether the child's thread is run successfully*/ 
-    struct list_elem child_elem; 
-    struct semaphore sema;/* semaphore to control waiting*/
-    int store_exit;/*the exit status of child thread*/
+  struct child
+    {
+      tid_t tid;                           /* tid of the thread */
+      bool isrun;                          /* whether the child's thread is run successfully */
+      struct list_elem child_elem;         /* list of children */
+      struct semaphore sema;               /* semaphore to control waiting */
+      int store_exit;                      /* the exit status of child thread */
     };
   ```
   
-- We add some new attributes to the struct `thread`
+  - We add some new attributes to the struct `thread`
   
-```C
-    struct list childs; //The list of childs
-    struct child * thread_child; //Store the child of this thread
-    int st_exit; //Exit status
-    struct semaphore sema; //control the child process's logic, finish parent waiting for child
-    bool success; //judge whehter the thread executes successfully in start_process
-    struct thread* parent; //parent thread of the thread
+  ```C
+  struct list childs;                 /* The list of childs */
+  struct child * thread_child;        /* Store the child of this thread */
+  int st_exit;                        /* Exit status */
+  struct semaphore sema;              /* Control the child process's logic, finish parent waiting for child */
+  bool success;                       /* Judge whehter the child's thread execute successfully */
+  struct thread* parent;              /* Parent thread of the thread */
   ```
+  
 - <syscall.c>
   - We create a new struct called `syscalls`
   ```C
-  /*max number for syscalls*/
-  # define max_syscall 20
-  /*Our implementation for storing the array of system calls for Task2 and Task3*/
-  static void (*syscalls[max_syscall])(struct intr_frame *);
+  struct list files;                  /* List of opened files */
+  int file_fd;                        /* File's descriptor */
+  struct file * file_owned;           /* The file opened */
   ```
-  
+
 
 #### 2.1.2 Functions
 
@@ -169,9 +170,9 @@ In this task, we finish three kernel system calls and one for practice. To achie
 * We add some new attributes to the struct `thread`
 
 ```C
-struct list files;//the list of opened files
-int file_fd; //File's number thread has
-struct file * file_owned; //the file opened
+struct list files; /* the list of opened files */
+int file_fd; /* File's number thread has */
+struct file * file_owned; /* the file opened */
 ```
 
 <syscall.h>
@@ -335,9 +336,11 @@ No. We remove them in the final version.
 No. If some codes will repeat, we encapsulate the codes into a function and just invoke the function when needed. We will check the invalid memory for each system call, but different system calls need to check different things. So we use function `check_ptr2` for all system calls (`check_ptr2` is a new version to solve special situation).  
 
 **Q8: Are your lines of source code excessively long? (more than 100 characters)**   
+
 No.
 
 **Q9: Did you re-implement linked list algorithms instead of using the provided list manipu-**
 **lation?**   
+
 No.
 
