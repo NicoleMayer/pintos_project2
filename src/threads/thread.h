@@ -29,11 +29,11 @@ typedef int tid_t;
 /*Our Implementatio for exec and wait:
 Child process for a parent's process which does fork*/
 struct child{
-    tid_t tid;
-    bool isrun;
-    struct list_elem child_elem;
-    struct semaphore sema;
-    int store_exit;
+    tid_t tid;     //tid of the thread
+    bool isrun;    //whether the child's thread is run successfully 
+    struct list_elem child_elem; 
+    struct semaphore sema;// semaphore to control waiting
+    int store_exit;//the exit status of child thread
 };
 
 //File that the thread open
@@ -121,12 +121,14 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
 
     /*Our implementation for struct thread to store useful information*/
+    /*Structure for Task2*/
     struct list childs; //The list of childs
     struct child * thread_child; //Store the child of this thread
     int st_exit; //Exit status
     struct semaphore sema; //control the child process's logic, finish parent waiting for child
     bool success; //judge whehter the child's thread execute successfully
     struct thread* parent; //parent thread of the thread
+    /*Structure for Task3*/
     struct list files;//the list of opened files
     int file_fd; //File's description
     struct file * file_owned; //the fiel owned

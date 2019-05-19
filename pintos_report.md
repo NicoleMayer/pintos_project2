@@ -20,9 +20,7 @@ No complex data structure, only use `string`s and `int`s
 
 - <process.c> :
   - modify `process_execute (const char *file_name)`
-  - modify `load (const char *file_name, void (**eip) (void), void **esp)`
   - modify `start_process (void *file_name_)`
-  - modify `setup_stack (void **esp)`
   - add `push_argument(void **esp,int argc, int argv[])`
   - modify `process_wait (tid_t child_tid)`
 - <syscall.c>
@@ -42,27 +40,25 @@ After analysing the original pintos code, we know that after `process_execute` c
 
 To set up the stack, we first memcpy the arguments and command name and save their address for future usage. Then add alignment, and `argv`'s address stored before also make sure `argv[argc]` is a null pointer. Next add the address of `argv`, `argc` and finally a `return` address.
 
+We create function `push_argument` to do split the argument by `argv` in the `start_process`.
 ### 1.3 Synchronization
 
 When parsing the command line, we use `strtok_r` given by pintos rather than `strtok`. The difference between `strtok` and `strtok_r` is that the latter is threadsafe. The `save_ptr` in `strtok_r` is provided by the caller but  `strtok`  relies on a pointer to remember where it was looking for. Thread may be interrupted at any time, so it's important to be threadsafe.
 
-————————begin——————————抄
-
-During the function `laod`, we allocate page directory for the file, open the file, push the argument into the stack. According to **Task3**, the file operation syscalls do not call multiple filesystem functions concurrently. Therefore, we have to keep the file from modified or opened by other processes. We implement it by using `filesys_lock` (defined in `thread.h` which we will explain in **Task3**):
-
+We use the filesys_lock to do file operation by adding method in thread.c and thread.h.
+```C
+/*Do file lock operation*/
+void acquire_lock_f(){
+  lock_acquire(&lock_f);
+}
+void release_lock_f(){
+  lock_release(&lock_f);
+}
 ```
-lock_acquire(&filesys_lock);
-//loading the file
-lock_release(&filesys_lock);
-```
-
-Also, according to the **Task3**, while a user process is running, the operating system must ensure that nobody can modify its executable on disk. `file_deny_write(file)` denies writes to this current-running files.
-
-————————end——————————抄
 
 ### 1.4 Rationale
 
-In this task, we split the command name and other arguments and pass them to the function `load` and add them into the stack with correct order. 补充？？
+In this task, we split the command name and other arguments and pass them to the function `load` and add them into the stack with correct order. The main purpose of this task is to assign the parameters to a specific stack in a specific order and the logic is clear.
 
 
 
@@ -74,49 +70,47 @@ In this task, we split the command name and other arguments and pass them to the
 
 - <thread.h>
 
-  - We create a new struct called `child_process`
+  - We create a new struct called `child`
 
   ```C
-  struct child_process
-  {
-    tid_t child_id;												// thread id
-    bool is_exit_called;									// whether exit is called
-    bool has_been_waited;									// whether the child process has been waited
-    int child_exit_status;								// pass to its parent process when it is exited
-    struct list_elem elem_child_status;
-  };
+  struct child
+  struct child{
+    tid_t tid;     //tid of the thread
+    bool isrun;    //whether the child's thread is run successfully 
+    struct list_elem child_elem; 
+    struct semaphore sema;// semaphore to control waiting
+    int store_exit;//the exit status of child thread
+    };
   ```
 
   - We add some new attributes to the struct `thread`
 
   ```C
-  /* parent's thread id */
-  tid_t parent_id;                    
-  
-  /* whether its child process successfully loaded its executable */
-  bool load_success;
-  
-  /* monitor used to wait the child, owned by wait-syscall and the waiting for
-       * child to load executable */ 抄的需要改！！！！！！！！！
-  struct lock lock_child;
-  struct condition cond_child;
-  
-  /* list of children process */
-  struct list children;
-  
-  /* the executable of the current thread, used to deny the running executable and enable the write after thread exits. */
-  struct file *exec_file;
+    struct list childs; //The list of childs
+    struct child * thread_child; //Store the child of this thread
+    int st_exit; //Exit status
+    struct semaphore sema; //control the child process's logic, finish parent waiting for child
+    bool success; //judge whehter the thread executes successfully in start_process
+    struct thread* parent; //parent thread of the thread
   ```
-
+- <syscall.c>
+  - We create a new struct called `syscalls`
+  ```C
+  /*max number for syscalls*/
+  # define max_syscall 20
+  /*Our implementation for storing the array of system calls for Task2 and Task3*/
+  static void (*syscalls[max_syscall])(struct intr_frame *);
+  ```
   
 
 #### 2.1.2 Functions
 
 - <syscall.c>
-  - add `memread_user (void *src, void *des, size_t bytes)`
   - add `get_user (const uint8_t *uaddr)`
+  - add `check_ptr2(const void *vaddr)`
   - modify `syscall_handler (struct intr_frame *f) `
-  - add `sys_halt (void)`, `sys_exit (int)`, `sys_exec (const char *cmdline)`, `sys_write(int fd, const void *buffer, unsigned size, int* ret)`, `int sys_wait(pid_t pid);`
+  - modify `syscall_init (void) `
+  - add `sys_halt (intr_frame* f)`, `sys_exit (intr_frame* f)`, `sys_exec (intr_frame* f)`, `sys_write(intr_frame* f)`, `int sys_wait(intr_frame* f);`
 
 ### 2.2 Algorithms
 
@@ -133,7 +127,7 @@ SYS_PRACTICE /* adds 1 to its first argument, and returns the result */
 
 In function `process_execute`,  invoke `sema_down` for the current thread to synchronize its execution. If the process is executed successfully, return the child process’s tid; else return `TID_ERROR`.
 
-In function `process_wait`, we'll check if `child_tid` exists in  `thread_current()->children_list` . If not this function will return -1, else we'll check if the child has been waited before, since the document stipulates that a child should only been waited for at most once. If it has been waited before, return -1, else set the waiting flag true. After checking, we down the semaphore `wait_sema` to block the process until the child terminates, Finally we remove the child process from `child_list` and return its `child_exit_status`.
+In function `process_wait`, we'll check if `child_tid` exists in  `thread_current()->childs` . If not this function will return -1, else we'll check if the child has been waited before, since the document stipulates that a child should only been waited for at most once. If it has been waited before, return -1, else set the waiting flag true(success). After checking, we down the semaphore `sema` to block the process until the child terminates, Finally we remove the child process from `childs` and return its `store_exit`.
 
 <syscall.c>:
 
@@ -145,7 +139,7 @@ Implemented by function `sys_halt (void)`, just call function `shutdown_power_of
 
 **exec**
 
-Implemented by function `sys_exec (const char *cmdline)`, first to check if the file referred by `file_name` is valid. If it is invalid, return -1, else we call function `process_execute (const char *file_name)`.
+Implemented by function `sys_exec (const char *cmdline)`, first to check if the file referred by `file_name` is valid(whether the pointer to memeory address, page and content of page are valid). If it is invalid, return -1, else we call function `process_execute (const char *file_name)`.
 
 **wait** 
 
@@ -153,23 +147,19 @@ Implemented by function `sys_wait(pid_t pid)`, first check if the argument it pa
 
 **practice**
 
-————————待补充————————
-
+The practice syscall just adds 1 to its first argument `argv[0]`, and returns the result 
 
 
 ### 2.3 Synchronization
+In the process of execution of process, execute will return -1 if the process fails, it can't return. To solve this, we add `success` to struct `thread` to record whether the thread exectue successfully. What' more, we use struct thread `parent` to get its parent and set its status according to the result of loading. It's a good design to record child's executing result in parent instead of child. Last but not least, we use semaphore to realize "parent" waits for "child". When a child process is created, it will down `sema` to block the parent. When the child finish, it will up `sema` to wake up his parent.  
+  
+In the process of wating of process(we realize the waiting process by semaphore), when a "parent" need to wait his "child", `sema_down` is called to block the parent.
+And when the "child" finishes, the "parent" will wake up.
 
-————————BEGIN——————————抄
-
-The system call "exec"  will returns -1 if loading the new executable fails, so it cannot return before the new executable has completed loading.  To ensure this, we add a new atrribute ` child_load_status` to struct `thread`, child can get parent process through `parent_id` and use the function `thread_find_by_id` to get the parent process and set its status. If we save it in the child, there is no way to get the status if the hcild exits before the parent checks for it. Also, when a parent process is creating a child, the child process will down the `wait_sema` and block the parent. Once the child process finish loading, it will increase the semaphore to wake up the parent process.
-
-Besides, the function `process_wait` also use semaphore to prevent race condition. When the parent start to wait one of its child, the `sema_down` is called and it will decrease the semaphore, and this will lead to block the parent thread and when the child process exits, the semphore will increase and the parent is waked up.
-
-————————END——————————抄
 
 ### 2.4 Rationale
 
-In this task, we finish three kernel system calls and one for practice. To achieve the goal, we create a new structure named `child_process` and add some atrributes to the struct `thread`. Semaphores are used in this task to prevent race condition.
+In this task, we finish three kernel system calls and one for practice. To achieve the goal, we create a new structure named `child` and add some atrributes to the struct `thread`. Semaphores are used in this task to prevent race condition. What's more, we store a thread's parent for it and such kind of design make us more eficient to find parent thread(we will change the status of parent more quickly).
 
 ## Task 3 File Operation Syscalls
 
