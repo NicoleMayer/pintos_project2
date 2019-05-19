@@ -338,6 +338,6 @@ No. If some codes will repeat, we encapsulate the codes into a function and just
 No.
 
 **Q9: Did you re-implement linked list algorithms instead of using the provided list manipu-**
-**lation?** 
+**lation?**   
 No.
 
