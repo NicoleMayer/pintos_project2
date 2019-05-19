@@ -74,11 +74,11 @@ In this task, we split the command name and other arguments and pass them to the
 
   ```C
   struct child{
-    tid_t tid;     //tid of the thread
-    bool isrun;    //whether the child's thread is run successfully 
+    tid_t tid;     /*tid of the thread*/
+    bool isrun;    /*whether the child's thread is run successfully*/ 
     struct list_elem child_elem; 
-    struct semaphore sema;// semaphore to control waiting
-    int store_exit;//the exit status of child thread
+    struct semaphore sema;/* semaphore to control waiting*/
+    int store_exit;/*the exit status of child thread*/
     };
   ```
   
@@ -106,7 +106,6 @@ In this task, we split the command name and other arguments and pass them to the
 
 - <syscall.c>
   - add `get_user (const uint8_t *uaddr)`
-  - add `check_ptr2(const void *vaddr)`
   - modify `syscall_handler (struct intr_frame *f) `
   - modify `syscall_init (void) `
   - add `sys_halt (intr_frame* f)`, `sys_exit (intr_frame* f)`, `sys_exec (intr_frame* f)`, `sys_write(intr_frame* f)`, `int sys_wait(intr_frame* f);`
@@ -134,11 +133,11 @@ we have a function `syscall_handler` with switch-case to execute corresponding c
 
 **halt**
 
-Implemented by function `sys_halt (void)`, just call function `shutdown_power_off`.
+Implemented by function `sys_halt (intr_frame* f)`, just call function `shutdown_power_off`.
 
 **exec**
 
-Implemented by function `sys_exec (const char *cmdline)`, first to check if the file referred by `file_name` is valid (whether the pointer to memeory address, page and content of page are valid). If it is invalid, return -1, else we call function `process_execute (const char *file_name)`.
+Implemented by function `sys_exec (intr_frame* f)`, first to check if the file referred by `file_name` is valid (whether the pointer to memeory address, page and content of page are valid). If it is invalid, return -1, else we call function `process_execute (const char *file_name)`.
 
 **wait** 
 
@@ -211,6 +210,8 @@ struct thread_file{
   * add `is_valid_pointer(void* esp,uint8_t argc)`
 
   * add `find_file_id(int file_id)`
+
+  * add `check_ptr2(const void *vaddr)`
 * <thread.c> && <thread.h>
   * add a global file lock to gurantee the safety of thread
   ```C
@@ -237,6 +238,45 @@ The function `syscall_handler` will determine which kind of syscall function to 
 
 The function `syscall_init (void)` will initialize `syscalls` to store the function of syscalls in this task.
 
+The function  `is_valid_pointer(void* esp,uint8_t argc)` is used to do unknown bugs in test `bad-read`. This function is just used to check whether the memory is valid and it is just used in `sys_read`
+
+The function `special_eixt` is used to pass the special test which have invalid memory,page and wrong content of page. We will kill the process and exit with -1 by `printf`.
+
+The function `check_ptr2` is used to check whether there is some mistakes like invalid memory, page and wrong content of page for each syscall.
+
+**create**
+
+Implemented by function `sys_create(struct intr_frame* f)`, just call function `filesys_create` and acquire lock by `acquire_lock_f()`, release it after finishing by `release_lock_f()`. This lock process will be used in other filesystem operation in the following methods.
+
+**remove**
+
+Implemented by function `sys_remove(struct intr_frame* f)`, just call function `filesys_remove (const char *name)`.
+
+**open**
+
+Implemented by function `sys_open(struct intr_frame* f)`,fisrt we need to open the file first by function `filesys_open (const char *name)`. Then we need to push the file with structure `thread_file` to the thread's opened file's list `files`.
+
+**write**
+
+Implemented by function `sys_write(struct intr_frame* f)`, first we need to judge whether we will write to stdout or files. If it will be written to stdout, we use function `putbuf (const char *buffer, size_t n)` to finish it. If it will be written to  files, first we find the file by id `find_file_id(int file_id)` in current thread, then do write operation by `file_write (struct file *file, const void *buffer, off_t size) `.
+
+**seek**
+
+Implemented by function `sys_seek(struct intr_frame* f)`, just call function `file_seek (struct file *file, off_t new_pos)`.
+
+**tell**
+
+Implemented by function `sys_tell(struct intr_frame* f)`, first find the file from `find_file_id(int file_id)`. Then call function `file_tell (struct file *file) ` to do syscall tell.
+
+**close**
+
+Implemented by function `sys_close(struct intr_frame* f)`, first find the file from `find_file_id(int file_id)`. Then call function `file_close (struct file *file) ` to do syscall close. Finally, we remove the file in the thread's list and free the file.
+
+**filesize**
+
+Implemented by function `sys_filesize(struct intr_frame* f)`, first find the file from `find_file_id(int file_id)`. Then call function `file_length (struct file *file) ` to do syscall filesize.
+
+
 ### 3.3 Synchronization
 
 All the file operations are protected by the global file system lock, which can prevent I/O on the same fd at the same time. First, we'll check whether the current thread is holding the global lock `lock_f` . If so, we release it. Then we have to close all the file the current thread opens and free all its child. Also, we disable the interruption, when we go through `thread_current()->parent->childs` or `thread_current()->files`, to prevent unpredictable error or race condition in context switch. So they will not cause race conditions. 
@@ -247,7 +287,7 @@ In this task, we finish nine kernel system calls for file systems. To achieve th
 
 ## Results
 
-We pass all 80 tests.
+We pass all 80 tests.  
 ![image](result1.png)
 ![image](result2.png)
 
