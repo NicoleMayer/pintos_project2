@@ -237,6 +237,8 @@ Besides, the filesystem of Pintos is not thread-safe, file operation syscalls ca
 
 The function `syscall_handler` will determine which kind of syscall function to execute. All arguments are already in the stack when a user program invoke a syscall. So, we just need to get the parameter from the stack. Each file syscalls will call the corresponding functions in the file system library in `filesys.c` after it acquires global file system lock, this lock will be released at last.
 
+The function `syscall_init (void)` will initialize `syscalls` to store the function of syscalls in this task.
+
 ### 3.3 Synchronization
 
 All the file operations are protected by the global file system lock, which can prevent I/O on the same fd at the same time. First, we'll check whether the current thread is holding the global lock `lock_f` . If so, we release it. Then we have to close all the file the current thread opens and free all its child. Also, we disable the interruption, when we go through `thread_current()->parent->childs` or `thread_current()->files`, to prevent unpredictable error or race condition in context switch. So they will not cause race conditions. 
@@ -249,8 +251,7 @@ In this task, we finish nine kernel system calls for file systems. To achieve th
 
 We pass all 80 tests.
 ![image](result1.png)
-![image](result2.jpg)
-此处应有截图
+![image](result2.png)
 
 ## Questions
 
@@ -296,11 +297,10 @@ No. We remove them in the final version.
 
 No. If some codes will repeat, we encapsulate the codes into a function and just invoke the function when needed. We will check the invalid memory for each system call, but different system calls need to check different things. So we use function `check_ptr2` for all system calls(`check_ptr2` is a new version to solve special situation).  
 
-**Q8: Are your lines of source code excessively long? (more than 100 characters)** 
+**Q8: Are your lines of source code excessively long? (more than 100 characters)**   
 No.
 
 **Q9: Did you re-implement linked list algorithms instead of using the provided list manipu-**
-**lation**
+**lation**  
 No.
-???这个就不知道了 看最后有木有搞！！
 
