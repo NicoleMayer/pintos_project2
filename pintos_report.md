@@ -172,8 +172,9 @@ In this task, we finish three kernel system calls and one for practice. To achie
 * We add some new attributes to the struct `thread`
 
 ```C
-struct list opened_files;   修改名称！！！
-int fd_count;
+struct list files;//the list of opened files
+int file_fd; //File's number thread has
+struct file * file_owned; //the file opened
 ```
 
 <syscall.h>
@@ -181,10 +182,10 @@ int fd_count;
 - We create a new struct called `process_file`
 
 ```C
-struct process_file {
-	struct file* ptr;
-	int fd;
-	struct list_elem elem;
+struct thread_file{
+    int fd;
+    struct file* file;
+    struct list_elem file_elem;
 };
 ```
 
@@ -193,46 +194,62 @@ struct process_file {
 * <syscall.c>
   * modify `syscall_handler (struct intr_frame *)`
 
+  * modify `syscall_init (void)`
+
   * add syscall functions
 
     ```C
-    int syscall_creat(struct intr_frame *f);
-    int syscall_remove(struct intr_frame *f);
-    int syscall_open(struct intr_frame *f);
-    int syscall_filesize(struct intr_frame *f);
-    int syscall_read(struct intr_frame *f);
-    int syscall_write(struct intr_frame *f);
-    void syscall_seek(struct intr_frame *f);
-    int syscall_tell(struct intr_frame *f);
-    void syscall_close(struct intr_frame *f);
+    void sys_create(struct intr_frame* f); /* syscall create */
+    void sys_remove(struct intr_frame* f); /* syscall remove */
+    void sys_open(struct intr_frame* f);/* syscall open */
+    void sys_wait(struct intr_frame* f); /*syscall wait */
+    void sys_filesize(struct intr_frame* f);/* syscall filesize */
+    void sys_read(struct intr_frame* f);  /* syscall read */
+    void sys_write(struct intr_frame* f); /* syscall write */
+    void sys_seek(struct intr_frame* f); /* syscall seek */
+    void sys_tell(struct intr_frame* f); /* syscall tell */
+    void sys_close(struct intr_frame* f); /* syscall close */
     ```
+  * add `is_valid_pointer(void* esp,uint8_t argc)`
 
-  * add `check_user (const uint8_t *uaddr)`
-
-  * add `put_user (uint8_t *udst, uint8_t byte)`
-
-  * add `find_file_desc(struct thread *, int fd)`
-
+  * add `find_file_id(int file_id)`
+* <thread.c> && <thread.h>
+  * add a global file lock to gurantee the safety of thread
+  ```C
+  /*Use a lock to lock process when do file operation*/
+  static struct lock c;
+  ```
+  * add file lock functions
+  ```C
+  void acquire_lock_f(){
+  lock_acquire(&lock_f);
+  }
+  void release_lock_f(){
+  lock_release(&lock_f);
+  }
+  ```
+  * modify some initialization function in the thread.c
 ### 3.2 Algorithms
 
 In this task, we need to implement another 9 syscalls concerning file operation  syscalls: create, remove, open, filesize, read, write, seek, tell, and close. When a user program is running, we must ensure that nobody can modify its executable file on the disk. For this task, we use a global lock to ensure the file syscalls is thread safe. When every syscall is called, it must acquire lock and after then, release the lock.  
 
-Besides, the filesystem of Pintos is not thread-safe, file operation syscalls cannot call multiple filesystem functions concurrently. To ensure this, we add a new variable `fd_count` into struct `thread` to keep the file desciptor larger than `STDIN_FILENO` and `STDOUT_FILENO`, `opened_files` is to keep a thread’s opened files.
+Besides, the filesystem of Pintos is not thread-safe, file operation syscalls cannot call multiple filesystem functions concurrently. To ensure this, we add a new variable `file_fd` into struct `thread` to keep the file desciptor larger than `STDIN_FILENO` and `STDOUT_FILENO`, `file_owned` is to keep a thread’s opened files.
 
 The function `syscall_handler` will determine which kind of syscall function to execute. All arguments are already in the stack when a user program invoke a syscall. So, we just need to get the parameter from the stack. Each file syscalls will call the corresponding functions in the file system library in `filesys.c` after it acquires global file system lock, this lock will be released at last.
 
 ### 3.3 Synchronization
 
-All the file operations are protected by the global file system lock, which can prevent I/O on the same fd at the same time. First, we'll check whether the current thread is holding the global lock `filesys_lock` . If so, we release it. Then we have to close all the file the current thread opens and free all its child. Also, we disable the interruption, when we go through `thread_current()->parent->children_list` or `thread_current()->opened_files`, to prevent unpredictable error or race condition in context switch. So they will not cause race conditions. 
+All the file operations are protected by the global file system lock, which can prevent I/O on the same fd at the same time. First, we'll check whether the current thread is holding the global lock `lock_f` . If so, we release it. Then we have to close all the file the current thread opens and free all its child. Also, we disable the interruption, when we go through `thread_current()->parent->childs` or `thread_current()->files`, to prevent unpredictable error or race condition in context switch. So they will not cause race conditions. 
 
 ### 3.4 Rationale
 
-In this task, we finish nine kernel system calls for file systems. To achieve the goal, we create a new structure named `process_file` and add some atrributes to the struct `thread`. Locks are used in this task to prevent race condition. 还有补充吗？？？
+In this task, we finish nine kernel system calls for file systems. To achieve the goal, we create a new structure named `thread_file` and add some atrributes to the struct `thread`. Locks are used in this task to prevent race condition. What's more,some special situation like invalid memory, page and file has been considered by killing the process by `special_exit`.
 
 ## Results
 
 We pass all 80 tests.
-
+![image](result1.png)
+![image](result2.jpg)
 此处应有截图
 
 ## Questions
@@ -253,9 +270,9 @@ What went well: We have a good division and cooperation. Every people focus on h
 
 What could be improved: The time schedule for this project is really tight, we should start earier to make a more thorough design. When we finish task 1, it took many times to figure out the reason why it didn't work, that is we didn't implement the system write. Orginally we thought the thread creation is to blame and this misdirected idea affected the progress of this project.
 
-**Q2: Does your code exhibit any major memory safety problems (especially regarding C strings), memory leaks, poor error handling, or race conditions?** 
+**Q2: Does your code exhibit any major memory safety problems (especially regarding C strings), memory leaks, poor error handling, or race conditions?**   
 
-???这个靠你写了。。过程中有木有遇到？
+Yes. When we do test `exec-bound-2` and `sc-boundary-2`, the invalid memory pointer(doesn't at the first argument) and syscall causes memory leak. So we use method `check_ptr` to check it.
 
 **Q3: Did you use consistent code style? Your code should blend in with the existing Pintos code. Check your use of indentation, your spacing, and your naming conventions.** 
 
@@ -263,36 +280,27 @@ Yes. Our codes are consistent with the style of existing Pintos code. Take the m
 
 **Q4: Is your code simple and easy to understand?** 
 
-Yes. The codes we implement are consistent with the algorithm part discussed before, we don't add a redundant line. And as the algorithm part shows, our algorithm is simple enough and readable.
+Yes. The codes we implement are consistent with the algorithm part discussed before, we don't add a redundant line. We add comments to important algorithm and parameters(The process to finish this project is also shown in the comment). And as the algorithm part shows, our algorithm is simple enough and readable.
 
-???需不需要补充？？？
 
 **Q5: If you have very complex sections of code in your solution, did you add enough comments to explain them?** 
 
-Yes. 
+Yes. We explain every parameter and the important line in these complex sections.
 
-做的时候注意一下有木有很长的地方。
-
-最后一次性加完所有注释
 
 **Q6: Did you leave commented-out code in your final submission?** 
 
 No. We remove them in the final version.
 
-注意最后把多余的注释删掉！！！
-
 **Q7: Did you copy-paste code instead of creating reusable functions?** 
 
-No. If some codes will repeat, we encapsulate the codes into a function and just invoke the function when needed.
-
-最好有一个例子！！
+No. If some codes will repeat, we encapsulate the codes into a function and just invoke the function when needed. We will check the invalid memory for each system call, but different system calls need to check different things. So we use function `check_ptr2` for all system calls(`check_ptr2` is a new version to solve special situation).  
 
 **Q8: Are your lines of source code excessively long? (more than 100 characters)** 
-
-Maybe. 搜一搜有木有过长的？？？
+No.
 
 **Q9: Did you re-implement linked list algorithms instead of using the provided list manipu-**
 **lation**
-
+No.
 ???这个就不知道了 看最后有木有搞！！
 

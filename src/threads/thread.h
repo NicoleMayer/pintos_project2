@@ -130,8 +130,8 @@ struct thread
     struct thread* parent; //parent thread of the thread
     /*Structure for Task3*/
     struct list files;//the list of opened files
-    int file_fd; //File's description
-    struct file * file_owned; //the fiel owned
+    int file_fd; //File's descriptor
+    struct file * file_owned; //the file opened
 
   };
 

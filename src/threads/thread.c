@@ -78,7 +78,6 @@ static tid_t allocate_tid (void);
 void acquire_lock_f(){
   lock_acquire(&lock_f);
 }
-
 void release_lock_f(){
   lock_release(&lock_f);
 }
@@ -198,12 +197,12 @@ thread_create (const char *name, int priority,
   /*Our implementation*/
   //Initialize for the thread's child
   t->thread_child = malloc(sizeof(struct child));
-  t->thread_child->tid=tid;
-  sema_init(&t->thread_child->sema,0);
+  t->thread_child->tid = tid;
+  sema_init (&t->thread_child->sema, 0);
   list_push_back (&thread_current()->childs, &t->thread_child->child_elem);
-  /*Initialize the exit status by the MAX
+  /*Initialize the  exit status by the MAX
   Fix Bug*/
-  t->thread_child->store_exit=UINT32_MAX;
+  t->thread_child->store_exit = UINT32_MAX;
   t->thread_child->isrun = false;
 
   /* Stack frame for kernel_thread(). */
