@@ -4,7 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "fixed_point.h"
+#include <threads/synch.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -24,6 +24,24 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+
+/*Our Implementatio for exec and wait:
+Child process for a parent's process which does fork*/
+struct child{
+    tid_t tid;
+    bool isrun;
+    struct list_elem child_elem;
+    struct semaphore sema;
+    int store_exit;
+};
+
+//File that the thread open
+struct thread_file{
+    int fd;
+    struct file* file;
+    struct list_elem file_elem;
+};
 
 /* A kernel thread or user process.
 
@@ -101,13 +119,28 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    /*Our implementation for struct thread to store useful information*/
+    struct list childs; //The list of childs
+    struct child * thread_child; //Store the child of this thread
+    int st_exit; //Exit status
+    struct semaphore sema; //control the child process's logic, finish parent waiting for child
+    bool success; //judge whehter the child's thread execute successfully
+    struct thread* parent; //parent thread of the thread
+    struct list files;//the list of opened files
+    int file_fd; //File's description
+    struct file * file_owned; //the fiel owned
+
   };
+
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-
+void acquire_lock_f(void);
+void release_lock_f(void);
 void thread_init (void);
 void thread_start (void);
 
@@ -138,5 +171,6 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
 
 #endif /* threads/thread.h */

@@ -77,7 +77,6 @@ int
 main (void)
 {
   char **argv;
-
   /* Clear BSS. */  
   bss_init ();
 

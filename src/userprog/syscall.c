@@ -1,194 +1,322 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
-#include "userprog/process.h"
+#include <devices/shutdown.h>
+#include <string.h>
+#include <filesys/file.h>
+#include <devices/input.h>
+#include <threads/malloc.h>
+#include <threads/palloc.h>
+
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "threads/vaddr.h"
-#include "devices/shutdown.h"
+#include "process.h"
+#include "pagedir.h"
+#include <threads/vaddr.h>
+#include <filesys/filesys.h>
+# define max_syscall 20
+# define USER_VADDR_BOUND (void*) 0x08048000
+/*Our implementation for storing the array of system calls for Task2 and Task3*/
+static void (*syscalls[max_syscall])(struct intr_frame *);
 
+/*Our implementation for Task2: syscall halt,exec,wait and practice*/
+void sys_halt(struct intr_frame* f); /* syscall halt. */
+void sys_exit(struct intr_frame* f); /* syscall exit. */
+void sys_exec(struct intr_frame* f); /* syscall exec. */
+/*Our implementation for Task3: syscall create, remove, open, filesize, read, write, seek, tell, and close*/
+void sys_create(struct intr_frame* f); /* syscall create */
+void sys_remove(struct intr_frame* f); /* syscall remove */
+void sys_open(struct intr_frame* f);/* syscall open */
+void sys_wait(struct intr_frame* f); /*syscall wait */
+void sys_filesize(struct intr_frame* f);/* syscall filesize */
+void sys_read(struct intr_frame* f);  /* syscall read */
+void sys_write(struct intr_frame* f); /* syscall write */
+void sys_seek(struct intr_frame* f); /* syscall seek */
+void sys_tell(struct intr_frame* f); /* syscall tell */
+void sys_close(struct intr_frame* f); /* syscall close */
 static void syscall_handler (struct intr_frame *);
-
-static int memread_user (void *src, void *des, size_t bytes);
-
-static int32_t get_user (const uint8_t *uaddr);
-
-typedef uint32_t pid_t;
-
-void sys_halt (void);
-void sys_exit (int);
-pid_t sys_exec (const char *cmdline);
-bool sys_write(int fd, const void *buffer, unsigned size, int* ret);
-
-
+struct thread_file * find_file_id(int fd);
 void
-syscall_init (void) 
+syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  /*Our implementation for Task2: initialize halt,exit,exec*/
+  syscalls[SYS_HALT] = &sys_halt;
+  syscalls[SYS_EXIT] = &sys_exit;
+  syscalls[SYS_EXEC] = &sys_exec;
+  /*Our implementation for Task3: initialize create, remove, open, filesize, read, write, seek, tell, and close*/
+  syscalls[SYS_WAIT] = &sys_wait;
+  syscalls[SYS_CREATE] = &sys_create;
+  syscalls[SYS_REMOVE] = &sys_remove;
+  syscalls[SYS_OPEN] = &sys_open;
+  syscalls[SYS_WRITE] = &sys_write;
+  syscalls[SYS_SEEK] = &sys_seek;
+  syscalls[SYS_TELL] = &sys_tell;
+  syscalls[SYS_CLOSE] =&sys_close;
+  syscalls[SYS_READ] = &sys_read;
+  syscalls[SYS_FILESIZE] = &sys_filesize;
+
 }
 
-static void
-syscall_handler (struct intr_frame *f) 
+/*Method in document to handle special situation*/
+static int get_user (const uint8_t *uaddr)
 {
-  int syscall_number;
-  ASSERT( sizeof(syscall_number) == 4 ); // assuming x86
-
-  // The system call number is in the 32-bit word at the caller's stack pointer.
-  if (memread_user(f->esp, &syscall_number, sizeof(syscall_number)) == -1) {
-    thread_exit (); // invalid memory access, terminate the user process
-    return;
-  }
-
-  // printf ("[DEBUG] system call, number = %d!\n", syscall_number);
-  // Dispatch w.r.t system call number
-  // SYS_*** constants are defined in syscall-nr.h
-  switch (syscall_number) {
-  case SYS_HALT:
-    {
-      sys_halt();
-      NOT_REACHED();
-      break;
-    }
-
-  case SYS_EXIT:
-    {
-      int exitcode;
-      if (memread_user(f->esp + 4, &exitcode, sizeof(exitcode)) == -1)
-        thread_exit(); // invalid memory access
-
-      sys_exit(exitcode);
-      NOT_REACHED();
-      break;
-    }
-
-  case SYS_EXEC:
-    {
-      void* cmdline;
-      if (memread_user(f->esp + 4, &cmdline, sizeof(cmdline)) == -1)
-        thread_exit(); // invalid memory access
-
-      int return_code = sys_exec((const char*) cmdline);
-      f->eax = (uint32_t) return_code;
-      break;
-    }
-  
-  case SYS_WAIT:
-  case SYS_CREATE:
-  case SYS_REMOVE:
-  case SYS_OPEN:
-  case SYS_FILESIZE:
-  case SYS_READ:
-    goto unhandled;
-  case SYS_WRITE:
-    {
-      int fd, return_code;
-      const void *buffer;
-      unsigned size;
-
-      // TODO some error messages
-      if(-1 == memread_user(f->esp + 4, &fd, 4)) thread_exit();
-      if(-1 == memread_user(f->esp + 8, &buffer, 4)) thread_exit();
-      if(-1 == memread_user(f->esp + 12, &size, 4)) thread_exit();
-
-      if(!sys_write(fd, buffer, size, &return_code)) thread_exit();
-      f->eax = (uint32_t) return_code;
-      break;
-    }
-
-  case SYS_SEEK:
-  case SYS_TELL:
-  case SYS_CLOSE:
-
-  /* unhandled case */
-  default:
-unhandled:
-    printf("[ERROR] system call %d is unimplemented!\n", syscall_number);
-    thread_exit();
-    break;
-  }
+   int result;
+ asm ("movl $1f, %0; movzbl %1, %0; 1:" : "=&a" (result) : "m" (*uaddr));
+ return result;
 }
 
-void 
-sys_halt(void) {
+/*New method to check the address and pages to pass test sc-bad-boundary2, execute */
+void* check_ptr2(const void *vaddr)
+{ 
+  /*Judge address*/
+  if (!is_user_vaddr(vaddr))
+  {
+    exit_special();
+  }
+  /*Judge the page*/
+  void *ptr = pagedir_get_page(thread_current()->pagedir, vaddr);
+  if (!ptr)
+  {
+    exit_special();
+  }
+  /*Judge the content of page*/
+  uint8_t* check_byteptr = (uint8_t *)vaddr;
+  for (uint8_t i = 0; i < 4; i++) 
+  {
+    if(get_user(check_byteptr + i) == -1)
+    {
+      exit_special();
+    }
+  }
+
+  return ptr;
+}
+
+
+/*Our implementation for Task2: halt,exit,exec*/
+/*Do sytem halt*/
+void sys_halt(struct intr_frame* f){
   shutdown_power_off();
 }
-
-void 
-sys_exit(int status UNUSED) {
-  printf("%s: exit(%d)\n", thread_current()->name, status);
-
-  // TODO
-  thread_exit();
+/*Do sytem exit*/
+void sys_exit(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 1);
+  *user_ptr++;
+  /*record the exit status of the process*/
+  thread_current()->st_exit = *user_ptr;
+  thread_exit ();
 }
-
-pid_t 
-sys_exec(const char *cmdline) {
-  printf("[DEBUG] Exec : %s\n", cmdline);
-  while(true);
-
-  // cmdline is an address to the character buffer, on user memory
-  // so a validation check is required
-  if (get_user((const uint8_t*) cmdline) == -1) {
-    // invalid memory access
-    thread_exit();
-    return -1;
+/*Do sytem exec*/
+void sys_exec(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 1);
+  check_ptr2(*(user_ptr + 1));
+  *user_ptr++;
+  f->eax = process_execute((char*)*user_ptr);
+}
+/*Do sytem wait*/
+void sys_wait(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 1);
+  *user_ptr++;
+  f->eax = process_wait(*user_ptr);
+}
+/*Our implementation for Task3: create, remove, open, filesize, read, write, seek, tell, and close*/
+/*Do sytem create, we need to acquire lock for file operation in the following methods when do file operation*/
+void sys_create(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 5);
+  check_ptr2(*(user_ptr + 4));
+  *user_ptr++;
+  acquire_lock_f();
+  f->eax = filesys_create((const char *)*user_ptr,*(user_ptr+1));
+  release_lock_f();
+}
+/*Do system remove, by calling the method filesys_remove */
+void sys_remove(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 1);
+  check_ptr2(*(user_ptr + 1));
+  *user_ptr++;
+  acquire_lock_f();
+  f->eax = filesys_remove((const char *)*user_ptr);
+  release_lock_f();
+}
+/*Do system open, open file by the function filesys_open*/
+void sys_open(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 1);
+  check_ptr2(*(user_ptr + 1));
+  *user_ptr++;
+  acquire_lock_f();
+  struct file * file_opened =filesys_open((const char *)*user_ptr);
+  release_lock_f();
+  struct thread * t=thread_current();
+  if(file_opened){
+    struct thread_file *thread_file_temp = malloc(sizeof(struct thread_file));
+    thread_file_temp->fd = t->file_fd++;
+    thread_file_temp->file = file_opened;
+    list_push_back(&t->files, &thread_file_temp->file_elem);
+    f->eax = thread_file_temp->fd;
+  } else
+    f->eax = -1;
+}
+/*Do system write, Do writing in stdout and write in files*/
+void sys_write(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 7);
+  check_ptr2(*(user_ptr + 6));
+  *user_ptr++;
+  int temp2 = *user_ptr;
+  const char * buffer = (const char *)*(user_ptr+1);
+  off_t size = *(user_ptr+2);
+  if (temp2==1) {
+    /*Use putbuf to do testing*/
+    putbuf(buffer,size);
+    f->eax = size;
   }
-
-  tid_t child_tid = process_execute(cmdline);
-  return child_tid;
+  else{
+    /*Write to Files*/
+    struct thread_file * thread_file_temp = find_file_id(*user_ptr);
+    if (thread_file_temp){
+      acquire_lock_f();
+      f->eax = file_write(thread_file_temp->file, buffer, size);
+      release_lock_f();
+    } else{
+      f->eax = 0;
+    }
+  }
 }
-
-bool 
-sys_write(int fd, const void *buffer, unsigned size, int* ret) {
-  // memory validation
-  if (get_user((const uint8_t*) buffer) == -1) {
-    // invalid
-    thread_exit();
+/*Do system seek, by calling the function file_seek() in filesystem*/
+void sys_seek(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 5);
+  *user_ptr++;
+  struct thread_file * file_temp = find_file_id(*user_ptr);
+  if (file_temp){
+    acquire_lock_f();
+    file_seek(file_temp->file, *(user_ptr+1));
+    release_lock_f();
+  }
+}
+/*Do system tell, by calling the function file_tell() in filesystem*/
+void sys_tell(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 1);
+  *user_ptr++;
+  struct thread_file * thread_file_temp = find_file_id(*user_ptr);
+  if (thread_file_temp){
+    acquire_lock_f();
+    f->eax = file_tell(thread_file_temp->file);
+    release_lock_f();
+  }else{
+    f->eax = -1;
+  }
+}
+/*Do system close, by calling the function file_close() in filesystem*/
+void sys_close(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 1);
+  *user_ptr++;
+  struct thread_file * opened_file=find_file_id(*user_ptr);
+  if (opened_file){
+    acquire_lock_f();
+    file_close(opened_file->file);
+    release_lock_f();
+    /*Remove the opened file from the list*/
+    list_remove(&opened_file->file_elem);
+    /*Free opened files*/
+    free(opened_file);
+  }
+}
+/*Do system filesize, by calling the function file_length() in filesystem*/
+void sys_filesize(struct intr_frame* f){
+  uint32_t *user_ptr = f->esp;
+  check_ptr2(user_ptr + 1);
+  *user_ptr++;
+  struct thread_file * thread_file_temp = find_file_id(*user_ptr);
+  if (thread_file_temp){
+    acquire_lock_f();
+    f->eax = file_length(thread_file_temp->file);
+    release_lock_f();
+  } else{
+    f->eax = -1;
+  }
+}
+bool is_valid_pointer(void* esp,uint8_t argc){
+for (uint8_t i = 0; i < argc; ++i)
+{
+  if((!is_user_vaddr(esp))||(pagedir_get_page(thread_current()->pagedir,esp)==NULL)){
     return false;
   }
+}
+return true;
+}
 
-  // First, as of now, only implement fd=1 (stdout)
-  // in order to display the messages from the test sets correctly.
-  if(fd == 1) {
-    putbuf(buffer, size);
-    *ret = size;
-    return true;
+
+/*Do system read, by calling the function file_tell() in filesystem*/
+void sys_read(struct intr_frame* f){
+  
+  uint32_t *user_ptr = f->esp;
+  /*PASS the test bad read*/
+  *user_ptr++;
+  /*We don't konw how to fix the bug, just check the pointer, just check the pointer*/
+  int fd = *user_ptr;
+  uint8_t * buffer = (uint8_t*)*(user_ptr+1);
+  off_t size = *(user_ptr+2);
+  if (!is_valid_pointer(buffer, 1) || !is_valid_pointer(buffer + size,1)){
+    exit_special();
   }
-  else {
-    printf("[ERROR] sys_write unimplemented\n");
+  /*get the files buffer*/
+  if (fd==0) {
+    for (int i=0; i<size; i++)
+      buffer[i] = input_getc();
+    f->eax = size;
+  }
+  else{
+    struct thread_file * thread_file_temp = find_file_id(*user_ptr);
+    if (thread_file_temp){
+      acquire_lock_f();
+      f->eax = file_read(thread_file_temp->file, buffer, size);
+      release_lock_f();
+    } else{
+      f->eax = -1;
+    }
+  }
+}
+/*Handle the special situation for thread*/
+void exit_special(){
+  thread_current()->st_exit = -1;
+  thread_exit ();
+}
+
+
+
+/*Find file by the file's ID*/
+struct thread_file * find_file_id(int file_id){
+  struct list_elem *e;
+  struct thread_file * thread_file_temp =NULL;
+  struct list *files = &thread_current()->files;
+  for (e = list_begin (files); e != list_end (files); e = list_next (e)){
+    thread_file_temp = list_entry (e, struct thread_file, file_elem);
+    if (file_id==thread_file_temp->fd)
+      return thread_file_temp;
   }
   return false;
 }
 
-/****************** Helper Functions on Memory Access ********************/
-
-static int32_t
-get_user (const uint8_t *uaddr) {
-  // check that a user pointer `uaddr` points below PHYS_BASE
-  if (! ((void*)uaddr < PHYS_BASE))
-    return -1; // invalid memory access
-
-  // as suggested in the reference manual, see (3.1.5)
-  int result;
-  asm ("movl $1f, %0; movzbl %1, %0; 1:"
-      : "=&a" (result) : "m" (*uaddr));
-  return result;
-}
-
-/**
- * Reads a consecutive `bytes` bytes of user memory with the
- * starting address `src` (uaddr), and writes to dst.
- * Returns the number of bytes read, or -1 on page fault (invalid memory access)
- */
-static int
-memread_user (void *src, void *dst, size_t bytes)
+/*Smplify the code to maintain the code more efficiently*/
+static void
+syscall_handler (struct intr_frame *f UNUSED)
 {
-  int32_t value;
-  size_t i;
-  for(i=0; i<bytes; i++) {
-    value = get_user(src + i);
-    if(value < 0) return -1; // invalid memory access.
-    *(char*)(dst + i) = value & 0xff;
+  /*For Task2 practice, just add 1 to its first argument, and print its result*/
+  int * p =f->esp;
+  check_ptr2(p + 1);
+  int type = * (int *)f->esp;
+  if(type<=0||type>=max_syscall){
+    exit_special();
   }
-  return (int)bytes;
+  syscalls[type](f);
 }
