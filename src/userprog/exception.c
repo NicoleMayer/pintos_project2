@@ -90,7 +90,6 @@ kill (struct intr_frame *f)
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
       thread_exit ();
-      //unexpected_exit(); 
 
     case SEL_KCSEG:
       /* Kernel's code segment, which indicates a kernel bug.
@@ -149,7 +148,7 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
    //IF USER ERROR IS FALSE THEN PUT THE RETURN ADDRESS INTO EIP AND RETURN ERROR INTO EAX
-   if(!user)
+   if (!user)
    {
       f->eip = f->eax;
       f->eax = -1;

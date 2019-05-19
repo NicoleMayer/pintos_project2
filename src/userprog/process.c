@@ -21,32 +21,27 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+void push_argument (void **esp, int argc, int argv[]);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
-  
 tid_t
 process_execute (const char *file_name)
 {
   tid_t tid;
-  // char *file_name_copy;
-  // file_name_copy = palloc_get_page (0);
-
-  // if (file_name_copy == NULL)
-  //   return TID_ERROR;
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  char *fn_copy=malloc(strlen(file_name)+1);
-  char *fn_copy2=malloc(strlen(file_name)+1);
-  strlcpy(fn_copy,file_name,strlen(file_name)+1);
-  strlcpy(fn_copy2,file_name,strlen(file_name)+1);
+  char *fn_copy = malloc(strlen(file_name)+1);
+  char *fn_copy2 = malloc(strlen(file_name)+1);
+  strlcpy (fn_copy, file_name, strlen(file_name)+1);
+  strlcpy (fn_copy2, file_name, strlen(file_name)+1);
 
 
   /* Create a new thread to execute FILE_NAME. */
   char * save_ptr;
-  fn_copy2 = strtok_r(fn_copy2," ",&save_ptr);
+  fn_copy2 = strtok_r (fn_copy2, " ", &save_ptr);
   tid = thread_create (fn_copy2, PRI_DEFAULT, start_process, fn_copy);
   free (fn_copy2);
 
@@ -55,16 +50,16 @@ process_execute (const char *file_name)
     return tid;
   }
 
-  /*Sema down the parent process, waiting for child*/
+  /* Sema down the parent process, waiting for child */
   sema_down(&thread_current()->sema);
   if (!thread_current()->success) return TID_ERROR;
 
   return tid;
 }
-/*Our implementation for Task 1:
-  Push argument into stack, this method is used in Task 1 Argument Pushing*/
+/* Our implementation for Task 1:
+  Push argument into stack, this method is used in Task 1 Argument Pushing */
 void
-  push_argument ( void **esp,int argc, int argv[]){
+push_argument (void **esp, int argc, int argv[]){
   *esp = (int)*esp & 0xfffffffc;
   *esp -= 4;
   *(int *) *esp = 0;
@@ -79,7 +74,7 @@ void
   *(int *) *esp = argc;
   *esp -= 4;
   *(int *) *esp = 0;
-  }
+}
 
 
 /* A thread function that loads a user process and starts it
@@ -104,27 +99,28 @@ start_process (void *file_name_)
   file_name = strtok_r (file_name, " ", &save_ptr);
   success = load (file_name, &if_.eip, &if_.esp);
 
-  if(success){
-    /*Our implementation for Task 1:
-      Calculate the number of parameters and the specification of parameters*/
-    int argc=0;
-    int argv[50];                                                //The number of parameters can't be more than 50 in the test case
-    for ( token = strtok_r (fn_copy, " ", &save_ptr);token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
-      if_.esp-=(strlen(token)+1);
-      memcpy(if_.esp,token,strlen(token)+1);
-      argv[argc++]=(int)if_.esp;
+  if (success){
+    /* Our implementation for Task 1:
+      Calculate the number of parameters and the specification of parameters */
+    int argc = 0;
+    /* The number of parameters can't be more than 50 in the test case */
+    int argv[50];
+    for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
+      if_.esp -= (strlen(token)+1);
+      memcpy (if_.esp, token, strlen(token)+1);
+      argv[argc++] = (int) if_.esp;
     }
-    push_argument (&if_.esp,argc,argv);
-    /*Record the exec_status of the parent thread's success and sema up parent's semaphore*/
-    thread_current()->parent->success=true;
-    sema_up(&thread_current()->parent->sema);
+    push_argument (&if_.esp, argc, argv);
+    /* Record the exec_status of the parent thread's success and sema up parent's semaphore */
+    thread_current ()->parent->success = true;
+    sema_up (&thread_current ()->parent->sema);
   }
 
   /* If load failed, quit. */
   else{
-    /*Record the exec_status of the parent thread's success and sema up parent's semaphore*/
-    thread_current()->parent->success=false;
-    sema_up(&thread_current()->parent->sema);
+    /* Record the exec_status of the parent thread's success and sema up parent's semaphore */
+    thread_current ()->parent->success = false;
+    sema_up (&thread_current ()->parent->sema);
     thread_exit ();
   }
 
@@ -148,31 +144,39 @@ start_process (void *file_name_)
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-/*Our Implementation
-Modify Process wait to satisfy some special test in Task1 and also some bugs in other Tasks*/
+
+/* Our Implementation
+Modify Process wait to satisfy some special test in Task1 and also some bugs in other Tasks */
 int
 process_wait (tid_t child_tid UNUSED)
 {
-  /*Find the child's ID that the current thread waits for and sema down the child's semaphore*/
+  /* Find the child's ID that the current thread waits for and sema down the child's semaphore */
   struct list *l = &thread_current()->childs;
   struct list_elem *temp;
-  temp=list_begin(l);
-  struct child *temp2=NULL;
-  while(temp!=list_end(l)){
+  temp = list_begin (l);
+  struct child *temp2 = NULL;
+  while (temp != list_end (l))
+  {
     temp2 = list_entry (temp, struct child, child_elem);
-    if(temp2->tid==child_tid){
-      if (!temp2->isrun){
+    if (temp2->tid == child_tid)
+    {
+      if (!temp2->isrun)
+      {
         temp2->isrun = true;
-        sema_down(&temp2->sema);
+        sema_down (&temp2->sema);
         break;
-      } else return -1;
+      } 
+      else 
+      {
+        return -1;
+      }
     }
-    temp=list_next(temp);
+    temp = list_next (temp);
   }
-  if (temp == list_end(l)) {
+  if (temp == list_end (l)) {
     return -1;
   }
-  list_remove(temp);
+  list_remove (temp);
   return temp2->store_exit;
 }
 
@@ -187,23 +191,22 @@ process_exit (void)
      to the kernel-only page directory. */
   pd = cur->pagedir;
   if (pd != NULL)
-    {
-      /* Correct ordering here is crucial.  We must set
-         cur->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
-      cur->pagedir = NULL;
-      pagedir_activate (NULL);
-      pagedir_destroy (pd);
-    }
+  {
+    /* Correct ordering here is crucial.  We must set
+        cur->pagedir to NULL before switching page directories,
+        so that a timer interrupt can't switch back to the
+        process page directory.  We must activate the base page
+        directory before destroying the process's page
+        directory, or our active page directory will be one
+        that's been freed (and cleared). */
+    cur->pagedir = NULL;
+    pagedir_activate (NULL);
+    pagedir_destroy (pd);
+  }
 }
 
 /* Sets up the CPU for running user code in the current
-   thread.
-   This function is called on every context switch. */
+   thread. This function is called on every context switch. */
 void
 process_activate (void)
 {
@@ -308,16 +311,16 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  acquire_lock_f();
+  acquire_lock_f ();
   file = filesys_open (file_name);
   if (file == NULL)
-    {
-      printf ("load: %s: open failed\n", file_name);
-      goto done;
-    }
-  /* Deny write for the opened file by calling file deny write*/
+  {
+    printf ("load: %s: open failed\n", file_name);
+    goto done;
+  }
+  /* Deny write for the opened file by calling file deny write */
   file_deny_write(file);
-  t-> file_owned = file;
+  t->file_owned = file;
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -521,7 +524,7 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
-  /*TODO some BUGs*/
+
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL)
     {

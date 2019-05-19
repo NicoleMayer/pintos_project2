@@ -26,22 +26,24 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 
-/*Our Implementatio for exec and wait:
-Child process for a parent's process which does fork*/
-struct child{
-    tid_t tid;     //tid of the thread
-    bool isrun;    //whether the child's thread is run successfully 
-    struct list_elem child_elem; 
-    struct semaphore sema;// semaphore to control waiting
-    int store_exit;//the exit status of child thread
-};
+/* Our Implementatio for exec and wait:
+Child process for a parent's process which does fork */
+struct child
+  {
+    tid_t tid;                           /* tid of the thread */
+    bool isrun;                          /* whether the child's thread is run successfully */
+    struct list_elem child_elem;         /* list of children */
+    struct semaphore sema;               /* semaphore to control waiting */
+    int store_exit;                      /* the exit status of child thread */
+  };
 
-//File that the thread open
-struct thread_file{
+/* File that the thread open */
+struct thread_file
+  {
     int fd;
     struct file* file;
     struct list_elem file_elem;
-};
+  };
 
 /* A kernel thread or user process.
 
@@ -120,18 +122,19 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
 
-    /*Our implementation for struct thread to store useful information*/
-    /*Structure for Task2*/
-    struct list childs; //The list of childs
-    struct child * thread_child; //Store the child of this thread
-    int st_exit; //Exit status
-    struct semaphore sema; //control the child process's logic, finish parent waiting for child
-    bool success; //judge whehter the child's thread execute successfully
-    struct thread* parent; //parent thread of the thread
-    /*Structure for Task3*/
-    struct list files;//the list of opened files
-    int file_fd; //File's descriptor
-    struct file * file_owned; //the file opened
+    /* Our implementation for struct thread to store useful information */
+    /* Structure for Task2 */
+    struct list childs;                 /* The list of childs */
+    struct child * thread_child;        /* Store the child of this thread */
+    int st_exit;                        /* Exit status */
+    struct semaphore sema;              /* Control the child process's logic, finish parent waiting for child */
+    bool success;                       /* Judge whehter the child's thread execute successfully */
+    struct thread* parent;              /* Parent thread of the thread */
+    
+    /* Structure for Task3 */
+    struct list files;                  /* List of opened files */
+    int file_fd;                        /* File's descriptor */
+    struct file * file_owned;           /* The file opened */
 
   };
 
